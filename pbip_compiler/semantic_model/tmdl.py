@@ -1,4 +1,10 @@
-"""TMDL parser — SemanticModel/definition/ folder (one .tmdl per object)."""
+"""TMDL parser — SemanticModel/definition/ folder (one .tmdl per object).
+
+Table parsing is delegated to the indentation-based TmdlTableParser (robust for
+multi-line expressions and trailing annotations). Its rich Table model is mapped
+down to the canonical model the DataModel builder consumes; relationships are
+parsed separately (they live in relationships.tmdl / model.tmdl, not per-table).
+"""
 
 from __future__ import annotations
 
@@ -6,48 +12,32 @@ import re
 from pathlib import Path
 
 from ..models import Column, Measure, Relationship, SemanticModel, Table
+from .tmdl_table import Table as TmdlTable
+from .tmdl_table import TmdlTableParser
 from .types import tmdl_type
 
 
 class TmdlParser:
-    """Parse TMDL files / a definition/ folder into a SemanticModel."""
-
-    def parse_file(self, path: Path) -> tuple[list[Table], list[Relationship]]:
-        """Parse a single .tmdl file. A file can hold a table and/or relationships."""
-        text = path.read_text(encoding="utf-8-sig")
-        tables: list[Table] = []
-        rels: list[Relationship] = []
-
-        table_match = re.search(r"^table\s+['\"]?(.+?)['\"]?\s*$", text, re.MULTILINE)
-        if table_match:
-            tables.append(self._parse_table(table_match.group(1).strip().strip("'\""), text))
-
-        rels.extend(self._parse_relationships(text))
-        return tables, rels
+    """Parse a TMDL definition/ folder into a (canonical) SemanticModel."""
 
     def parse_folder(self, defn_dir: Path) -> SemanticModel:
         all_tables: list[Table] = []
         all_rels: list[Relationship] = []
 
-        # tables/ sub-folder — one .tmdl per table
+        # Candidate .tmdl files: tables/ sub-folder + the definition root
+        # (model.tmdl, database.tmdl, relationships.tmdl, …).
+        candidates: list[Path] = []
         tables_dir = defn_dir / "tables"
         if tables_dir.is_dir():
-            for tmdl_file in sorted(tables_dir.glob("*.tmdl")):
-                t, r = self.parse_file(tmdl_file)
-                all_tables.extend(t)
-                all_rels.extend(r)
+            candidates += sorted(tables_dir.glob("*.tmdl"))
+        candidates += sorted(defn_dir.glob("*.tmdl"))
 
-        # relationships.tmdl (often at the defn_dir root)
-        rel_file = defn_dir / "relationships.tmdl"
-        if rel_file.exists():
-            _, r = self.parse_file(rel_file)
-            all_rels.extend(r)
-
-        # Any remaining .tmdl files at the defn_dir root (model.tmdl, database.tmdl …)
-        for tmdl_file in sorted(defn_dir.glob("*.tmdl")):
-            t, r = self.parse_file(tmdl_file)
-            all_tables.extend(t)
-            all_rels.extend(r)
+        for tmdl_file in candidates:
+            text = tmdl_file.read_text(encoding="utf-8-sig")
+            if re.search(r"^table\s+", text, re.MULTILINE):
+                rich = TmdlTableParser(text).parse()
+                all_tables.append(self._to_canonical(rich))
+            all_rels.extend(self._parse_relationships(text))
 
         # De-duplicate tables by name (last wins)
         seen: dict[str, Table] = {t.name: t for t in all_tables}
@@ -64,56 +54,33 @@ class TmdlParser:
 
         return SemanticModel(tables=unique_tables, relationships=unique_rels)
 
-    def _parse_table(self, tname: str, text: str) -> Table:
+    def _to_canonical(self, rt: TmdlTable) -> Table:
+        """Map the rich parsed table to the builder's canonical Table."""
         cols: list[Column] = []
-        # columns: each 'column <name>' block runs until the next 1-tab keyword.
-        # We grab dataType and sourceColumn (the source field name the partition
-        # query exposes — needed to map fetched rows onto columns).
-        for col_m in re.finditer(
-            r"\n\tcolumn\s+['\"]?(.+?)['\"]?\s*\n"
-            r"(.*?)(?=\n\t(?:column|measure|partition|hierarchy)\b|\Z)",
-            "\n" + text, re.DOTALL,
-        ):
-            cname = col_m.group(1).strip().strip("'\"")
-            block = col_m.group(2)
-            # skip calculated columns — they have no VertiPaq source storage
-            if re.search(r"^\s*type:\s*calculated\b", block, re.MULTILINE):
+        for c in rt.columns:
+            # Calculated columns have no VertiPaq source storage — skip them.
+            if c.is_calculated:
                 continue
-            dt_m = re.search(r"dataType:\s*(\S+)", block)
-            sc_m = re.search(r"sourceColumn:\s*(.+)", block)
             cols.append(Column(
-                name=cname,
-                data_type=tmdl_type(dt_m.group(1) if dt_m else "string"),
-                source_column=sc_m.group(1).strip().strip("'\"") if sc_m else cname,
+                name=c.name,
+                data_type=tmdl_type(c.data_type or "string"),
+                source_column=c.source_column or c.name,
             ))
 
-        measures: list[Measure] = []
-        for meas_m in re.finditer(
-            r"measure\s+['\"]?(.+?)['\"]?\s*=\s*(.*?)(?=\n\s*(?:measure|column|table|\Z))",
-            text, re.DOTALL,
-        ):
-            measures.append(Measure(
-                name=meas_m.group(1).strip().strip("'\""),
-                expression=meas_m.group(2).strip(),
-            ))
+        measures = [Measure(name=m.name, expression=m.expression) for m in rt.measures]
 
-        # partition M source — 'partition <name> = m' then an indented 'source ='.
+        # The import partition's M source becomes the table's query.
         m_expression = ""
-        part_m = re.search(
-            r"\n\tpartition\s+.+?=\s*m\b(.*?)(?=\n\tpartition\b|\n\ttable\b|\Z)",
-            "\n" + text, re.DOTALL,
-        )
-        if part_m:
-            src_m = re.search(r"source\s*=\s*(.*)", part_m.group(1), re.DOTALL)
-            if src_m:
-                m_expression = src_m.group(1).strip()
+        for p in rt.partitions:
+            if (p.type or "").lower() == "m" and p.source:
+                m_expression = p.source
+                break
 
-        is_hidden = bool(re.search(r"^\s*isHidden\s*$", text, re.MULTILINE))
         return Table(
-            name=tname,
+            name=rt.name,
             columns=cols,
             measures=measures,
-            is_hidden=is_hidden,
+            is_hidden=rt.is_hidden,
             m_expression=m_expression,
         )
 

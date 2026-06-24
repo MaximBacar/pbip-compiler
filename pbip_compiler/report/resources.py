@@ -1,17 +1,7 @@
-"""Collect theme / static-resource files referenced by the report layout."""
-
-from __future__ import annotations
-
 from pathlib import Path
 
 
 class StaticResourceCollector:
-    """Collect theme and static resource files referenced in resourcePackages.
-
-    The Report/Layout references themes via resourcePackages[].items[].path,
-    e.g. "BaseThemes/CY26SU05.json". These files must be embedded in the PBIX
-    at Report/StaticResources/SharedResources/<path> or the report fails to load.
-    """
 
     def collect(self, report_folder: Path, layout: dict) -> dict[str, bytes]:
         resources: dict[str, bytes] = {}

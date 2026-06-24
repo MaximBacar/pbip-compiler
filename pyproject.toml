@@ -1,10 +1,43 @@
 [project]
-name = "power-bi"
-version = "0.1.0"
-description = "Add your description here"
+name = "pbip-compiler"
+dynamic = ["version"]
+description = "Compile a Power BI Project (.pbip) folder into a .pbix file — pure Python, no Power BI Desktop or Windows required."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
+authors = [
+    { name = "Maxim Bacar", email = "maximbacar@hotmail.ca" },
+]
+keywords = ["powerbi", "pbip", "pbix", "tmdl", "vertipaq", "report"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = [
+    "msal>=1.37.0",
     "pbix-mcp>=0.9.2",
     "pydantic>=2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MaximBacar/pbip-compiler"
+Repository = "https://github.com/MaximBacar/pbip-compiler"
+Issues = "https://github.com/MaximBacar/pbip-compiler/issues"
+
+[project.scripts]
+pbip-compiler = "pbip_compiler.cli:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pbip_compiler"]

@@ -1,20 +1,5 @@
-"""Compile a PBIR definition/ folder into a legacy Report/Layout dict.
-
-PBIR stores each object in separate JSON files with its own schema. The legacy
-Report/Layout expected inside a .pbix is a single flat JSON with
-sections[].visualContainers[] each carrying config/filters as JSON strings,
-and prototypeQuery in the legacy DAX query format.
-
-PBIR uses string enum names; the legacy Report/Layout uses numeric codes.
-Copying the PBIR string values verbatim makes Desktop load the DataModel but
-reject the report ("report load failed"), because the legacy report engine
-can't deserialise the resourcePackages / themeCollection blocks.
-"""
-
-from __future__ import annotations
-
-import json
-from pathlib import Path
+from    pathlib import Path
+import  json
 
 
 class PbirCompiler:

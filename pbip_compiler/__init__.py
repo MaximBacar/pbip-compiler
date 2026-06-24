@@ -23,19 +23,16 @@ from .compiler import PbipCompiler
 from .models import (
     Column,
     Measure,
-    MSource,
     Relationship,
     SemanticModel,
     Table,
 )
 
 __all__ = [
-    "compile_pbip",
     "PbipCompiler",
     "SemanticModel",
     "Table",
     "Column",
     "Measure",
     "Relationship",
-    "MSource",
 ]

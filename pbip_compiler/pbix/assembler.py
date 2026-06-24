@@ -16,20 +16,27 @@ class PbixAssembler:
 
     def assemble(
         self,
-        output_path: Path,
+        output_path: Optional[Path],
         layout: dict,
         base_pbix: Optional[bytes],
         report_folder: Optional[Path] = None,  # for copying theme/static resources
-    ) -> None:
-        print(f"\n[build] Assembling {output_path.name} …")
+    ) -> bytes:
+        """Build the .pbix bytes. Writes them to ``output_path`` when given,
+        otherwise just returns them (in-memory compilation)."""
+        name = output_path.name if output_path is not None else "(in-memory)"
+        print(f"\n[build] Assembling {name} …")
 
         if base_pbix is not None:
             raw = self._patch_layout_into_pbix(base_pbix, layout, report_folder)
         else:
             raw = self._build_thin_pbix(layout)
 
-        output_path.write_bytes(raw)
-        print(f"\n[done] {output_path}  ({len(raw) / 1024:,.1f} KB)")
+        if output_path is not None:
+            output_path.write_bytes(raw)
+            print(f"\n[done] {output_path}  ({len(raw) / 1024:,.1f} KB)")
+        else:
+            print(f"\n[done] in-memory  ({len(raw) / 1024:,.1f} KB)")
+        return raw
 
     def _patch_layout_into_pbix(
         self,
@@ -110,15 +117,18 @@ class PbixAssembler:
     # ── Live connection (connect to a published semantic model) ──────────────
     def assemble_live_connection(
         self,
-        output_path: Path,
+        output_path: Optional[Path],
         report_folder: Path,
         connection_string: str,
-    ) -> None:
-        """Write a live-connection .pbix: no DataModel, a Connections part, and
+    ) -> bytes:
+        """Build a live-connection .pbix: no DataModel, a Connections part, and
         the PBIR report (definition/ + StaticResources/) embedded verbatim under
         Report/. The report binds to the remote model named in connection_string.
+
+        Writes to ``output_path`` when given, otherwise just returns the bytes.
         """
-        print(f"\n[build] Assembling {output_path.name} (live connection) …")
+        name = output_path.name if output_path is not None else "(in-memory)"
+        print(f"\n[build] Assembling {name} (live connection) …")
 
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -147,8 +157,13 @@ class PbixAssembler:
 
             print("  –  DataModel                                              (omitted — live connection)")
 
-        output_path.write_bytes(buf.getvalue())
-        print(f"\n[done] {output_path}  ({len(buf.getvalue()) / 1024:,.1f} KB)")
+        raw = buf.getvalue()
+        if output_path is not None:
+            output_path.write_bytes(raw)
+            print(f"\n[done] {output_path}  ({len(raw) / 1024:,.1f} KB)")
+        else:
+            print(f"\n[done] in-memory  ({len(raw) / 1024:,.1f} KB)")
+        return raw
 
     @staticmethod
     def _build_connections(connection_string: str) -> bytes:

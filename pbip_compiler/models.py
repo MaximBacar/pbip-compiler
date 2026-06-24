@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -37,11 +35,3 @@ class Table(BaseModel):
 class SemanticModel(BaseModel):
     tables: list[Table] = Field(default_factory=list)
     relationships: list[Relationship] = Field(default_factory=list)
-
-
-class MSource(BaseModel):
-    """Result of classifying a partition's M source."""
-    kind: str = "unknown"              # e.g. "json", "sqlserver", "unknown"
-    source_db: Optional[dict] = None   # → PBIXBuilder.add_table(source_db=…)
-    source_csv: Optional[str] = None   # → PBIXBuilder.add_table(source_csv=…)
-    refreshable: bool = False          # True if Desktop/Service can refresh it
