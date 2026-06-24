@@ -1,0 +1,10 @@
+[project]
+name = "power-bi"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pbix-mcp>=0.9.2",
+    "pydantic>=2",
+]
